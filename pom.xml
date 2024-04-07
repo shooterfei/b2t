@@ -1,0 +1,110 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>cn.iflytek.bid2tender</groupId>
+    <artifactId>bid2tender</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.6.4</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+
+    <properties>
+        <!-- 项目类型版本 -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- JDK版本 -->
+        <java.version>1.8</java.version>
+
+        <!-- 版本管理类,注意：属性中关联引用，在命令行编译过程中会无效-->
+        <!-- 编译相关变量设置项，参考：https://maven.apache.org/plugins/maven-compiler-plugin/compile-mojo.html -->
+        <maven.compiler.version>3.5.1</maven.compiler.version>
+        <!-- 默认使用1.5版本,此值必须配置-->
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <!-- 默认使用1.5版本,此值必须配置-->
+        <maven.compiler.target>1.8</maven.compiler.target>
+        <!-- poi版本-->
+        <poi.version>5.2.3</poi.version>
+        <!-- spire free 版本 数量有限制-->
+        <spire.doc.free>5.2.0</spire.doc.free>
+    </properties>
+
+
+    <distributionManagement>
+        <repository>
+            <id>mvn-releases</id>
+            <name>Local Nexus Repository</name>
+            <url>https://artifacts.iflytek.com/artifactory/obu-mvn-release-private</url>
+        </repository>
+        <snapshotRepository>
+            <id>mvn-snapshots</id>
+            <name>Local Nexus Repository</name>
+            <url>https://artifacts.iflytek.com/artifactory/obu-mvn-snapshot-private/</url>
+        </snapshotRepository>
+    </distributionManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-excelant</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+        <!-- poi-tl基于poi的word模板引擎 -->
+        <dependency>
+            <groupId>com.deepoove</groupId>
+            <artifactId>poi-tl</artifactId>
+            <version>1.12.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>e-iceblue</groupId>
+            <artifactId>spire.doc.free</artifactId>
+            <version>${spire.doc.free}</version>
+        </dependency>
+
+    </dependencies>
+
+    <repositories>
+        <repository>
+            <id>com.e-iceblue</id>
+            <name>e-iceblue</name>
+            <url>https://repo.e-iceblue.com/nexus/content/groups/public/</url>
+        </repository>
+    </repositories>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven.compiler.version}</version>
+                <configuration>
+                    <source>${maven.compiler.source}</source>
+                    <target>${maven.compiler.target}</target>
+                    <encoding>${project.build.sourceEncoding}</encoding>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
