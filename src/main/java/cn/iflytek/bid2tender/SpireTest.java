@@ -1,13 +1,20 @@
 package cn.iflytek.bid2tender;
 
+import cn.iflytek.bid2tender.utils.ToolUtil;
 import com.spire.doc.*;
 import com.spire.doc.collections.*;
 import com.spire.doc.documents.*;
 import com.spire.doc.interfaces.IStyle;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.tools.ant.types.resources.Difference;
 
+import javax.management.remote.rmi._RMIConnection_Stub;
 import javax.security.auth.Subject;
 import java.awt.*;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -266,25 +273,51 @@ public class SpireTest {
      */
     private static List<DocumentObject> extractTitleInfo(Document doc, String title) {
         List<DocumentObject> subjects = getSubjects(doc);
+        Pattern comparePattern = Pattern.compile("^(\\d+\\.){0,}(.*)$");
+        // 资质 | 资格 两字可替换使用, 特殊处理文本
+        boolean aptitudeFlag = false;
+        if (title.contains("资质") || title.contains("资格")) {
+            aptitudeFlag = true;
+        }
         int index = -1;
+        boolean eFlag = false;
         for (int i = 0; i < subjects.size(); i++) {
             DocumentObject subject = subjects.get(i);
             if (subject.getDocumentObjectType() == DocumentObjectType.Paragraph) {
                 Paragraph paragraph = (Paragraph) subject;
                 String text = paragraph.getText();
                 if (title.equals(text)) {
+                    eFlag = true;
                     index = i;
+                } else {
+                    Matcher matcher = comparePattern.matcher(text);
+                    if (matcher.matches()) {
+                        if (aptitudeFlag) {
+                            String textRepl = matcher.group(2).replace("资格", "资质");
+                            String titleRepl = title.replace("资格", "资质");
+                            if (textRepl.equals(titleRepl)) {
+                                eFlag = false;
+                                index = i;
+                            }
+                        } else {
+                            if (matcher.group(2).equals(title)) {
+                                eFlag = false;
+                                index = i;
+                            }
+                        }
+                    }
                 }
             }
         }
         if (index > 0) {
+            System.out.println(index + " : " + title + " : " + ((Paragraph) subjects.get(index)).getText());
             ArrayList<DocumentObject> documentObjects = new ArrayList<>();
-            documentObjects.add(subjects.get(index));
+            if (eFlag) documentObjects.add(subjects.get(index));
             for (int i = index + 1; i < subjects.size(); i++) {
                 DocumentObject subject = subjects.get(i);
                 if (subject.getDocumentObjectType() == DocumentObjectType.Paragraph) {
                     Paragraph paragraph = (Paragraph) subject;
-                    if (!"Normal".equals(paragraph.getStyle().getName())) {
+                    if (!paragraph.getStyle().getName().startsWith("Normal")) {
                         break;
                     }
                 }
@@ -297,36 +330,10 @@ public class SpireTest {
     }
 
 
-    /**
-     * 数字转汉字
-     *
-     * @param number
-     */
-    public static String convertNumber(int number) {
-        //数字对应的汉字
-        String[] num = {"一", "二", "三", "四", "五", "六", "七", "八", "九"};
-        //单位
-        String[] unit = {"", "十", "百", "千", "万", "十", "百", "千", "亿", "十", "百", "千", "万亿"};
-        //将输入数字转换为字符串
-        String result = String.valueOf(number);
-        //将该字符串分割为数组存放
-        char[] ch = result.toCharArray();
-        //结果 字符串
-        String str = "";
-        int length = ch.length;
-        for (int i = 0; i < length; i++) {
-            int c = (int) ch[i] - 48;
-            if (c != 0) {
-                str += num[c - 1] + unit[length - i - 1];
-            }
-        }
-        return str;
-    }
-
-    public static void main(String[] args) throws FileNotFoundException {
+    public static void fileGenerate() {
         Document document = new Document(Constant.bidFilePath);
         List<TenderFileInfo> tenderFileInfos = titleExtract(document);
-        for (int i = 0; i < 1; i++) {
+        for (int i = 0; i < tenderFileInfos.size(); i++) {
             TenderFileInfo tenderFileInfo = tenderFileInfos.get(i);
             Document target = new Document();
             // 封面拷贝
@@ -345,19 +352,202 @@ public class SpireTest {
             for (int j = 0; j < tenderFileInfo.getTitles().size(); j++) {
                 String title = tenderFileInfo.getTitles().get(j);
                 List<DocumentObject> documentObjects = extractTitleInfo(document, title);
-                title = convertNumber(j + 1) + "、" + title;
+                title = ToolUtil.convertNumber(j + 1) + "、" + title;
                 addTitle(target, title, "Heading 1");
                 if (documentObjects != null) {
                     addDocBodyList(target, documentObjects);
                     addPageBreak(target);
                 }
             }
+            if (tenderFileInfo.getFileName().contains("技术")) {
+                SectionCollection secs = target.getSections();
+                boolean flag = false;
+                Table t = null;
+
+                ft:
+                for (int j = 0; j < secs.getCount(); j++) {
+                    Section s = secs.get(j);
+                    DocumentObjectCollection co = s.getBody().getChildObjects();
+                    for (int k = 0; k < co.getCount(); k++) {
+                        DocumentObject dot = co.get(k);
+                        if (flag) {
+                            if (dot.getDocumentObjectType() == DocumentObjectType.Table) {
+                                t = (Table) dot;
+                                break ft;
+                            }
+                        }
+                        if (dot.getDocumentObjectType() == DocumentObjectType.Paragraph) {
+                            Paragraph p = (Paragraph) dot;
+                            if (p.getText().contains("采购需求偏离表")) {
+                                flag = true;
+                            }
+                        }
+                    }
+                }
+                if (t != null) {
+                    File file = new File(Constant.baseFilePath);
+                    if (file.exists()) {
+                        if (file.isDirectory()) {
+                            File[] files = file.listFiles();
+                            for (File f : files) {
+                                if (f.getName().contains("技术规范书") && f.getName().charAt(0) != '~' && f.isFile()) {
+                                    try (FileInputStream inputStream = new FileInputStream(Constant.baseFilePath + f.getName());) {
+                                        XWPFDocument xwpfDocument = new XWPFDocument(inputStream);
+                                        List<String[]> tsl = PoiReadTest.techTitleExtract(xwpfDocument);
+                                        RowCollection rows = t.getRows();
+                                        if (rows.getCount() > (tsl.size() + 1)) {
+                                            int differenceValue = rows.getCount() - tsl.size();
+                                            for (int j = 0; j < differenceValue; j++) {
+                                                rows.removeAt(rows.getCount() - 1);
+                                            }
+                                        }
+                                        if (rows.getCount() <= tsl.size()) {
+                                            int differenceValue = tsl.size() - rows.getCount();
+                                            for (int j = 0; j <= differenceValue; j++) {
+                                                TableRow tableRow = rows.get(rows.getCount() - 1);
+                                                rows.add(tableRow.deepClone());
+                                            }
+                                        }
+                                        for (int j = 1; j < rows.getCount(); j++) {
+                                            TableRow tableRow = rows.get(j);
+                                            CellCollection cells = tableRow.getCells();
+                                            for (int k = 0; k < tsl.get(j - 1).length; k++) {
+                                                cells.get(k).getFirstParagraph().setText(tsl.get(j - 1)[k]);
+                                            }
+                                        }
+                                    } catch (IOException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
 
             target.saveToFile(Constant.baseFilePath + "target/" + tenderFileInfo.getFileName() + ".docx", FileFormat.Docx);
 
         }
         System.out.println(tenderFileInfos);
+    }
 
+    public static List<String> techTitleExtract(Document doc) {
+/*
+        SectionCollection sections = doc.getSections();
+        int ct1 = sections.getCount();
+        while (ct1 > 0) {
+            ct1 = sections.getCount();
+            System.out.println(ct1);
+            for (int i = 0; i < ct1; i++) {
+                Section section = sections.get(i);
+                DocumentObjectCollection cos = section.getBody().getChildObjects();
+                int ct2 = cos.getCount();
+                if (ct2 == 0) {
+                    sections.removeAt(i);
+                    break;
+                }
+                for (int j = 0; j < ct2; j++) {
+                    DocumentObject r = cos.get(0);
+                    if (r.getDocumentObjectType() == DocumentObjectType.Paragraph) {
+                        Paragraph paragraph = (Paragraph) r;
+//                        System.out.println(paragraph.getText());
+                    }
+                    cos.removeAt(0);
+                }
+            }
+        }
+*/
+/*
+
+        int index = 0;
+        Document document = null;
+        String filePath = null;
+        SectionCollection sections = doc.getSections();
+//        process:
+//        while (true) {
+        document = new Document();
+        filePath = Constant.baseFilePath + "process/" + index + ".docx";
+        StyleCollection styles = doc.getStyles();
+        for (int i = 0; i < styles.getCount(); i++) {
+            document.getStyles().add(styles.get(i).deepClone());
+        }
+
+//            doc.getStyles().a
+        int sCount = sections.getCount();
+        for (int i = 0; i < sCount; i++) {
+            Section section = sections.get(i);
+            Section sec = doc.addSection();
+            DocumentObjectCollection cos = section.getChildObjects();
+            for (int j = 0; j < cos.getCount(); j++) {
+                DocumentObject dot = cos.get(j);
+                if (dot.getDocumentObjectType() == DocumentObjectType.Body) {
+                    DocumentObjectCollection childObjects = section.getBody().getChildObjects();
+                    int count = childObjects.getCount();
+                    if (count == 0) {
+//                    document = null;
+//                    filePath = null;
+//                    break process;
+                    }
+                    for (int k = 0; k < count; k++) {
+//                    System.out.println(j);
+                        DocumentObject documentObject = childObjects.get(0);
+                        if (documentObject.getDocumentObjectType() == DocumentObjectType.Paragraph) {
+                            Paragraph paragraph = (Paragraph) documentObject;
+                            System.out.println(paragraph.getText());
+                        }
+                        sec.getBody().getChildObjects().add(documentObject.deepClone());
+                        section.getBody().getChildObjects().removeAt(0);
+                    }
+//                for (int j = 0; j < count; j++) {
+//                }
+//            System.out.println(childObjects.getCount());
+
+                    ParagraphCollection paragraphs = section.getBody().getParagraphs();
+                    System.out.println(paragraphs.getCount());
+                    for (int k = 0; k < paragraphs.getCount(); k++) {
+                        Paragraph paragraph = paragraphs.get(k);
+                        String styleName = paragraph.getStyle().getName();
+                        String text = paragraph.getText();
+//                if ("Heading 1".equals(styleName) || "Heading 2".equals(styleName)) {
+//                    System.out.println(styleName + " : " + text);
+//                }
+//                if (text.contains("VOLTE 网络业务质量")) {
+//                    System.out.println("-----------");
+//                }
+                    }
+                } else {
+                    sec.getChildObjects().add(dot.deepClone());
+                }
+            }
+
+
+        }
+        index++;
+//        }
+        if (document != null) {
+            document.saveToFile(filePath, FileFormat.Docx);
+        }
+*/
+        return null;
+    }
+
+    public static void main(String[] args) throws FileNotFoundException {
+        fileGenerate();
+/*
+        File file = new File(Constant.baseFilePath);
+        if (file.exists()) {
+            if (file.isDirectory()) {
+                File[] files = file.listFiles();
+                for (File f : files) {
+                    if (f.getName().contains("技术规范书") && f.getName().charAt(0) != '~' && f.isFile()) {
+                        Document document = new Document(Constant.baseFilePath + f.getName());
+                        techTitleExtract(document);
+                    }
+                }
+            }
+        }
+*/
     }
 
 }
